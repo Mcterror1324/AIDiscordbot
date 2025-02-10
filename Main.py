@@ -70,6 +70,14 @@ async def save_message(channel_id, text):
     async with aiofiles.open(file_path, "a", encoding="utf-8") as file:
         await file.write(f"{text}\n")
 
+def load_channel_history(channel_id):
+    """채널별 대화 기록을 로드"""
+    file_path = os.path.join(history_folder, f"{channel_id}.txt")
+    if os.path.exists(file_path):
+        with open(file_path, "r", encoding="utf-8") as file:
+            return file.readlines()
+    return []
+
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
@@ -81,7 +89,7 @@ async def on_message(message):
     if message.reference and message.reference.message_id:
         referenced_message = await message.channel.fetch_message(message.reference.message_id)
         print(f"📩 [봇 메시지에 대한 답장 감지] {message.author}: {message.content}")
-        response = generate_ai_response(message.content, message.author.id)
+        response = generate_ai_response(message.content, message.author.id, message.channel.id)
         if response:
             await message.reply(response, mention_author=False)  # 공개 답장
             print(f"💬 [응답] {bot.user}: {response}")
@@ -92,7 +100,7 @@ async def on_message(message):
     trigger_phrases = [":ai.response", ":어떻게생각해?", ":howdoyouthink"]
     if any(message.content.strip().endswith(trigger) for trigger in trigger_phrases):
         print(f"📩 [트리거 감지] {message.author}: {message.content}")
-        response = generate_ai_response(message.content, message.author.id)
+        response = generate_ai_response(message.content, message.author.id, message.channel.id)
         if response:
             await save_message(message.channel.id, f"{bot.user}: {response}")
             await message.reply(response, mention_author=False)
@@ -133,12 +141,18 @@ async def clear_memory(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("저장된 사용자 메모리가 없습니다.")
 
-def generate_ai_response(user_message, user_id):
+def generate_ai_response(user_message, user_id, channel_id):
     """OpenAI GPT-4-mini를 사용하여 응답 생성"""
     user_history = user_memory.get(str(user_id), {}).get("history", [])
-    conversation = [{"role": "system", "content": "You are always polite and speak in formal Korean. You are a helpful and engaging chatbot in a Discord server."}]
+    channel_history = load_channel_history(channel_id)
+    conversation = [{"role": "system", "content": "You are always polite and speak in formal Korean. You are a helpful and engaging chatbot in a Discord server. And you're name is A.A.B and it stands for Ai Assistant Bot."}]
+    
+    for msg in channel_history[-20:]:
+        conversation.append({"role": "user", "content": msg.strip()})
+    
     for msg in user_history[-20:]:
         conversation.append({"role": "user", "content": msg})
+    
     conversation.append({"role": "user", "content": user_message})
 
     try:
